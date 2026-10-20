@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shotgun King · data.sgr 解包 / 打包</title>
+<meta name="description" content="纯浏览器端解开 Shotgun King 的 data.sgr, 或把 zip 打包回 .sgr。文件不上传, 全在本地处理。">
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f26;
+    --panel2: #23272f;
+    --line: #2e343f;
+    --text: #e8eaf0;
+    --dim: #9aa3b2;
+    --accent: #f2c14e;
+    --ok: #64d29a;
+    --err: #ff7b72;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: .3px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--dim); margin: 0 0 28px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .card h2 { font-size: 17px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .card h2 .tag {
+    font-size: 11px; font-weight: 600; color: #10131a;
+    background: var(--accent); border-radius: 20px; padding: 2px 9px;
+  }
+  .drop {
+    border: 1.5px dashed var(--line);
+    border-radius: 10px;
+    padding: 26px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: .15s;
+    background: var(--panel2);
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: #2a2f39; }
+  .drop.has { border-style: solid; border-color: var(--ok); }
+  .drop .big { font-size: 14px; }
+  .drop .fname { color: var(--ok); font-size: 13px; margin-top: 6px; word-break: break-all; }
+  .drop .hint { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  button {
+    font: inherit;
+    border: 0;
+    border-radius: 9px;
+    padding: 11px 16px;
+    background: var(--accent);
+    color: #14161a;
+    font-weight: 600;
+    cursor: pointer;
+    transition: .15s;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.dl { background: var(--ok); width: 100%; }
+  .barwrap { height: 6px; background: #11141a; border-radius: 4px; overflow: hidden; }
+  .barwrap.busy { box-shadow: 0 0 0 1px var(--line); }
+  .bar { height: 100%; width: 0%; background: var(--accent); transition: width .2s; }
+  .status { font-size: 12.5px; color: var(--dim); min-height: 19px; }
+  .log { font-size: 12.5px; color: var(--dim); word-break: break-all; }
+  .stat { font-size: 13.5px; color: var(--text); line-height: 1.7; }
+  .stat .dim, .dim { color: var(--dim); font-size: 12.5px; }
+  .err {
+    color: var(--err); font-size: 13px; background: #2a1d1d;
+    border: 1px solid #4a2a2a; border-radius: 8px; padding: 10px 12px; word-break: break-word;
+  }
+  label.chk { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--dim); cursor: pointer; }
+  label.chk input { margin-top: 4px; accent-color: var(--accent); }
+  details { font-size: 13px; color: var(--dim); }
+  details summary { cursor: pointer; color: var(--text); }
+  details .row { display: flex; gap: 10px; margin-top: 10px; align-items: center; }
+  details input {
+    flex: 1; font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 7px;
+    border: 1px solid var(--line); background: #11141a; color: var(--text);
+  }
+  .notes { margin-top: 34px; font-size: 13px; color: var(--dim); line-height: 1.85; }
+  .notes h3 { color: var(--text); font-size: 14px; margin: 22px 0 8px; }
+  .notes code { background: #23272f; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+  .notes ul { padding-left: 20px; margin: 6px 0; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Shotgun King <span>data.sgr</span> 解包 / 打包</h1>
+  <p class="sub">
+    全部在浏览器本地完成,文件不会上传到任何服务器。
+    格式由逆向 <code>shotgun_king.exe</code>(SUGAR 引擎)得出:zlib + 自研的"偶数下标异或"混淆 + 私有容器。
+  </p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>解包 <span class="tag">.sgr → .zip</span></h2>
+      <div class="drop" id="un-drop">
+        <div class="big">把 data.sgr 拖进来,或点这里选择</div>
+        <div class="fname"></div>
+        <div class="hint">约 79 MB</div>
+      </div>
+      <input type="file" id="un-file" accept=".sgr" hidden>
+      <label class="chk">
+        <input type="checkbox" id="un-meta" checked>
+        <span>附带 <code>.sgr-meta.json</code>(推荐)—— 记录条目顺序、包内原始路径、种子尾和路径清单,
+          这样之后把 zip 传回来才能打出和原包等价的 <code>.sgr</code>。取消勾选则 zip 里只有包内文件。</span>
+      </label>
+      <button id="un-go" disabled>开始解包</button>
+      <div class="barwrap"><div class="bar" id="un-bar"></div></div>
+      <div class="status" id="un-status">等待文件</div>
+      <div class="log" id="un-log"></div>
+      <div id="un-result"></div>
+    </section>
+
+    <section class="card">
+      <h2>打包 <span class="tag">.zip → .sgr</span></h2>
+      <div class="drop" id="pk-drop">
+        <div class="big">把 zip 拖进来,或点这里选择</div>
+        <div class="fname"></div>
+        <div class="hint">解包得到的 zip 最好原样传回来</div>
+      </div>
+      <input type="file" id="pk-file" accept=".zip" hidden>
+      <details id="pk-adv">
+        <summary>高级:标题 / 开发组 / 入口脚本(仅在 zip 没有元数据时生效)</summary>
+        <div id="pk-adv-body" style="display:none">
+          <div class="row"><span>标题</span><input id="pk-title" placeholder="Shotgun King - The Final Checkmate"></div>
+          <div class="row"><span>开发组</span><input id="pk-dev" placeholder="PUNKCAKE Delicieux"></div>
+          <div class="row"><span>入口</span><input id="pk-main" placeholder="code.lua"></div>
+        </div>
+      </details>
+      <button id="pk-go" disabled>开始打包</button>
+      <div class="barwrap"><div class="bar" id="pk-bar"></div></div>
+      <div class="status" id="pk-status">等待文件</div>
+      <div class="log" id="pk-log"></div>
+      <div id="pk-result"></div>
+    </section>
+  </div>
+
+  <div class="notes">
+    <h3>关于这个工具</h3>
+    <p>
+      格式三层:<b>①</b> 容器先 zlib 压缩,再只对<b>偶数下标</b>的字节异或(密钥流来自引擎自带的 5 字状态机,
+      种子取文件最后 4 字节异或 <code>0x550F0F55</code>,末尾 4 字节本身不参与);
+      <b>②</b> 容器是 <code>[u16 名字长度][路径][u8 标志][u32 长度][数据]</code> 的序列,标志 1 表示"路径清单";
+      <b>③</b> 每段数据再用同一套异或处理一次(不再压缩),末尾 4 字节是种子而不是内容。
+    </p>
+    <h3>注意</h3>
+    <ul>
+      <li>整包约 90 MB,浏览器需要 400~600 MB 空闲内存,手机可能吃不消。</li>
+      <li>打出来的 <code>.sgr</code> 与原包<b>内容一致但不保证字节一致</b> —— 外层压缩由浏览器的 zlib 实现决定。</li>
+      <li>原包里 <code>assets/gfx/gfx.png</code> 有两个同名条目(内容相同),解包会合并成一个,打包时按元数据还原成两条。</li>
+      <li>覆盖游戏里的 <code>data.sgr</code> 前请务必先备份;改错了游戏会起不来。</li>
+      <li>素材版权归 PUNKCAKE Delicieux 所有,仅供自用 / 做 mod / 学习。</li>
+    </ul>
+  </div>
+</div>
+<script src="js/app.min.js"></script>
+</body>
+</html>
